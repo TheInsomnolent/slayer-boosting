@@ -28,7 +28,9 @@ import com.google.inject.Provides;
 import java.awt.Color;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Function;
 import javax.inject.Inject;
 import lombok.Getter;
@@ -36,8 +38,14 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
 import net.runelite.api.NPC;
+import net.runelite.api.Player;
+import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.GameStateChanged;
+import net.runelite.api.events.NpcDespawned;
+import net.runelite.api.events.NpcSpawned;
 import net.runelite.api.events.VarbitChanged;
+import net.runelite.api.gameval.VarPlayerID;
+import net.runelite.api.gameval.VarbitID;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
@@ -56,12 +64,6 @@ import net.runelite.client.ui.overlay.OverlayManager;
 )
 public class SlayerBoostingPlugin extends Plugin
 {
-	// Varbit IDs for slayer data
-	private static final int SLAYER_TASK_STREAK_VARBIT = 4069;
-	private static final int SLAYER_POINTS_VARBIT = 4068;
-	// VarPlayer 394 = remaining kills on current task
-	private static final int SLAYER_TASK_SIZE_VARP = 394;
-
 	@Inject
 	private Client client;
 
@@ -81,6 +83,9 @@ public class SlayerBoostingPlugin extends Plugin
 	private NpcOverlayService npcOverlayService;
 
 	private final Function<NPC, HighlightedNpc> npcHighlighter = this::highlightNpc;
+
+	/** Slayer master NPCs currently in the loaded scene. */
+	private final Set<NPC> trackedMasters = new HashSet<>();
 
 	@Getter
 	private int streak;
@@ -125,6 +130,13 @@ public class SlayerBoostingPlugin extends Plugin
 		{
 			clientThread.invokeLater(() ->
 			{
+				for (NPC npc : client.getNpcs())
+				{
+					if (SlayerMaster.isSlayerMaster(npc.getName()))
+					{
+						trackedMasters.add(npc);
+					}
+				}
 				readVarbits();
 				evaluateRules();
 			});
@@ -138,6 +150,7 @@ public class SlayerBoostingPlugin extends Plugin
 	{
 		overlayManager.remove(overlay);
 		npcOverlayService.unregisterHighlighter(npcHighlighter);
+		trackedMasters.clear();
 		resetState();
 		log.info("Slayer Boosting plugin stopped");
 	}
@@ -152,8 +165,60 @@ public class SlayerBoostingPlugin extends Plugin
 		}
 		else if (event.getGameState() == GameState.LOGIN_SCREEN)
 		{
+			trackedMasters.clear();
 			resetState();
 		}
+	}
+
+	@Subscribe
+	public void onNpcSpawned(NpcSpawned event)
+	{
+		NPC npc = event.getNpc();
+		if (SlayerMaster.isSlayerMaster(npc.getName()))
+		{
+			trackedMasters.add(npc);
+		}
+	}
+
+	@Subscribe
+	public void onNpcDespawned(NpcDespawned event)
+	{
+		trackedMasters.remove(event.getNpc());
+	}
+
+	/**
+	 * Returns true if the local player is within {@code tiles} tiles (Chebyshev distance,
+	 * same plane) of any tracked slayer master NPC.
+	 */
+	public boolean isPlayerNearSlayerMaster(int tiles)
+	{
+		Player local = client.getLocalPlayer();
+		if (local == null || trackedMasters.isEmpty())
+		{
+			return false;
+		}
+
+		WorldPoint playerLoc = local.getWorldLocation();
+		if (playerLoc == null)
+		{
+			return false;
+		}
+
+		for (NPC npc : trackedMasters)
+		{
+			WorldPoint npcLoc = npc.getWorldLocation();
+			if (npcLoc == null || npcLoc.getPlane() != playerLoc.getPlane())
+			{
+				continue;
+			}
+			int dx = Math.abs(npcLoc.getX() - playerLoc.getX());
+			int dy = Math.abs(npcLoc.getY() - playerLoc.getY());
+			if (Math.max(dx, dy) <= tiles)
+			{
+				return true;
+			}
+		}
+		return false;
 	}
 
 	@Subscribe
@@ -176,9 +241,9 @@ public class SlayerBoostingPlugin extends Plugin
 			return;
 		}
 
-		int newStreak = client.getVarbitValue(SLAYER_TASK_STREAK_VARBIT);
-		int newPoints = client.getVarbitValue(SLAYER_POINTS_VARBIT);
-		int newTaskCount = client.getVarpValue(SLAYER_TASK_SIZE_VARP);
+		int newStreak = client.getVarbitValue(VarbitID.SLAYER_TASKS_COMPLETED);
+		int newPoints = client.getVarbitValue(VarbitID.SLAYER_POINTS);
+		int newTaskCount = client.getVarpValue(VarPlayerID.SLAYER_COUNT);
 
 		boolean changed = false;
 
@@ -221,6 +286,11 @@ public class SlayerBoostingPlugin extends Plugin
 			return null;
 		}
 
+		if (!config.highlightMasters())
+		{
+			return null;
+		}
+
 		SlayerMaster master = SlayerMaster.fromNpcName(npc.getName());
 		if (master == null)
 		{
@@ -230,6 +300,8 @@ public class SlayerBoostingPlugin extends Plugin
 		// Determine who the player should visit right now
 		SlayerMaster targetMaster = milestoneActive ? milestoneMaster : config.defaultMaster();
 
+		boolean showName = config.showMasterNames();
+
 		if (master == targetMaster && config.highlightCorrectMaster())
 		{
 			Color color = config.correctMasterColor();
@@ -238,8 +310,8 @@ public class SlayerBoostingPlugin extends Plugin
 				.highlightColor(color)
 				.fillColor(new Color(color.getRed(), color.getGreen(), color.getBlue(), 30))
 				.hull(true)
-				.name(true)
-				.nameOnMinimap(true)
+				.name(showName)
+				.nameOnMinimap(showName)
 				.borderWidth(2.0f)
 				.render(n -> true)
 				.build();
@@ -252,8 +324,8 @@ public class SlayerBoostingPlugin extends Plugin
 				.highlightColor(color)
 				.fillColor(new Color(color.getRed(), color.getGreen(), color.getBlue(), 30))
 				.hull(true)
-				.name(true)
-				.nameOnMinimap(true)
+				.name(showName)
+				.nameOnMinimap(showName)
 				.borderWidth(2.0f)
 				.render(n -> true)
 				.build();
@@ -267,9 +339,9 @@ public class SlayerBoostingPlugin extends Plugin
 	 */
 	private void readVarbits()
 	{
-		streak = client.getVarbitValue(SLAYER_TASK_STREAK_VARBIT);
-		points = client.getVarbitValue(SLAYER_POINTS_VARBIT);
-		taskCount = client.getVarpValue(SLAYER_TASK_SIZE_VARP);
+		streak = client.getVarbitValue(VarbitID.SLAYER_TASKS_COMPLETED);
+		points = client.getVarbitValue(VarbitID.SLAYER_POINTS);
+		taskCount = client.getVarpValue(VarPlayerID.SLAYER_COUNT);
 		log.debug("Read varbits: streak={}, points={}, taskCount={}", streak, points, taskCount);
 	}
 

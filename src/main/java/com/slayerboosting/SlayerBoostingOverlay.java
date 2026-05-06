@@ -45,13 +45,17 @@ public class SlayerBoostingOverlay extends OverlayPanel
 	private static final Color CORRECT_MASTER_COLOR = new Color(0, 255, 128);
 	private static final Color NORMAL_COLOR = Color.WHITE;
 
+	private static final int PROXIMITY_TILES = 15;
+
 	private final SlayerBoostingPlugin plugin;
+	private final SlayerBoostingConfig config;
 
 	@Inject
-	public SlayerBoostingOverlay(SlayerBoostingPlugin plugin)
+	public SlayerBoostingOverlay(SlayerBoostingPlugin plugin, SlayerBoostingConfig config)
 	{
 		super(plugin);
 		this.plugin = plugin;
+		this.config = config;
 		setPosition(OverlayPosition.TOP_LEFT);
 		setPriority(OverlayPriority.MED);
 	}
@@ -59,6 +63,11 @@ public class SlayerBoostingOverlay extends OverlayPanel
 	@Override
 	public Dimension render(Graphics2D graphics)
 	{
+		if (!config.showOverlay())
+		{
+			return null;
+		}
+
 		int streak = plugin.getStreak();
 		int nextTask = streak + 1;
 		boolean isMilestone = plugin.isMilestoneActive();
@@ -68,6 +77,26 @@ public class SlayerBoostingOverlay extends OverlayPanel
 		if (nextMaster == null)
 		{
 			return null;
+		}
+
+		switch (config.overlayMode())
+		{
+			case BETWEEN_TASKS:
+				// Hide while the player has an active task; show when they have none.
+				if (plugin.getTaskCount() > 0)
+				{
+					return null;
+				}
+				break;
+			case PROXIMITY:
+				if (!plugin.isPlayerNearSlayerMaster(PROXIMITY_TILES))
+				{
+					return null;
+				}
+				break;
+			case ALWAYS:
+			default:
+				break;
 		}
 
 		// Title

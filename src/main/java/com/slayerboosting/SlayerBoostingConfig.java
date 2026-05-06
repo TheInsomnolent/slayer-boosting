@@ -56,10 +56,58 @@ public interface SlayerBoostingConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "showOverlay",
+		name = "Show Info Overlay",
+		description = "Show the slayer boosting info panel",
+		position = 1,
+		section = generalSection
+	)
+	default boolean showOverlay()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		keyName = "overlayMode",
+		name = "Overlay Display Mode",
+		description = "When to display the info overlay: always, only between tasks, or only when near a slayer master",
+		position = 2,
+		section = generalSection
+	)
+	default OverlayDisplayMode overlayMode()
+	{
+		return OverlayDisplayMode.PROXIMITY;
+	}
+
+	@ConfigItem(
+		keyName = "highlightMasters",
+		name = "Highlight Slayer Masters",
+		description = "Draw highlights on slayer master NPCs",
+		position = 3,
+		section = generalSection
+	)
+	default boolean highlightMasters()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		keyName = "showMasterNames",
+		name = "Show Master Names",
+		description = "Display the slayer master's name above the highlight",
+		position = 4,
+		section = generalSection
+	)
+	default boolean showMasterNames()
+	{
+		return false;
+	}
+
+	@ConfigItem(
 		keyName = "highlightCorrectMaster",
 		name = "Highlight Correct Master",
 		description = "Draw a green highlight on the correct slayer master NPC",
-		position = 1,
+		position = 5,
 		section = generalSection
 	)
 	default boolean highlightCorrectMaster()
@@ -71,7 +119,7 @@ public interface SlayerBoostingConfig extends Config
 		keyName = "highlightWrongMasters",
 		name = "Highlight Wrong Masters",
 		description = "Draw a red highlight on wrong slayer master NPCs",
-		position = 2,
+		position = 6,
 		section = generalSection
 	)
 	default boolean highlightWrongMasters()
@@ -84,7 +132,7 @@ public interface SlayerBoostingConfig extends Config
 		keyName = "correctMasterColor",
 		name = "Correct Master Color",
 		description = "Color to highlight the correct slayer master",
-		position = 3,
+		position = 7,
 		section = generalSection
 	)
 	default Color correctMasterColor()
@@ -97,7 +145,7 @@ public interface SlayerBoostingConfig extends Config
 		keyName = "wrongMasterColor",
 		name = "Wrong Master Color",
 		description = "Color to highlight wrong slayer masters",
-		position = 4,
+		position = 8,
 		section = generalSection
 	)
 	default Color wrongMasterColor()
@@ -109,7 +157,7 @@ public interface SlayerBoostingConfig extends Config
 		keyName = "eliteWesternDiary",
 		name = "Elite Western Provinces",
 		description = "Enable if you have completed the Elite Western Provinces diary (Nieve/Steve +25% points)",
-		position = 5,
+		position = 9,
 		section = generalSection
 	)
 	default boolean eliteWesternDiary()
@@ -121,7 +169,7 @@ public interface SlayerBoostingConfig extends Config
 		keyName = "eliteKourendDiary",
 		name = "Elite Kourend & Kebos",
 		description = "Enable if you have completed the Elite Kourend & Kebos diary (Konar boosted points)",
-		position = 6,
+		position = 10,
 		section = generalSection
 	)
 	default boolean eliteKourendDiary()
